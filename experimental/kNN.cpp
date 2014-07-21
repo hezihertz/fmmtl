@@ -11,38 +11,45 @@ template <typename T, std::size_t K, typename Compare = std::less<T> >
 class ordered_vector {
   static_assert(K > 0, "ordered_vector must have K > 0");
 
-  T data[K];
+  // Empty base class optimization for trivial comparators
+  struct internal : public Compare {
+    internal(const Compare& _comp) : Compare(_comp) {}
+    T data[K];
+  };
+
+  internal comp;
   unsigned size;
-  const Compare comp;
 
   void insert(int i, const T& t) {
-    for ( ; i > 0 && comp(t,data[i-1]); --i)
-      data[i] = data[i-1];
-    data[i] = t;
+    for ( ; i > 0 && comp(t,comp.data[i-1]); --i)
+      comp.data[i] = comp.data[i-1];
+    comp.data[i] = t;
   }
 
  public:
   // Default construction
   ordered_vector(const Compare& _comp = Compare())
-      : size(0), comp(_comp) {
+      : comp(_comp), size(0) {
   }
 
   ordered_vector& operator+=(const T& t) {
-    if (size < K) {
-      insert(size, t);
-      ++size;
-    } else if (comp(t,data[K-1])) {
+    if (size < K)
+      insert(size++, t);
+    else if (comp(t,comp.data[K-1]))
       insert(K-1, t);
-    }
     return *this;
+  }
+
+  operator std::vector<T>() const {
+    return std::vector<T>(comp.data, comp.data + K);
   }
 
   friend std::ostream& operator<<(std::ostream& s, const ordered_vector& ov) {
     s << "(";
     if (ov.size >= 1)
-      s << ov.data[0];
+      s << ov.comp.data[0];
     for (unsigned i = 1; i < ov.size; ++i)
-      s << ", " << ov.data[i];
+      s << ", " << ov.comp.data[i];
     return s << ")";
   }
 };
@@ -69,17 +76,6 @@ struct kNN : public fmmtl::Kernel<kNN<K> >{
 
 
 int main() {
-  /*
-  ordered_vector<int, 5> ov;
-  std::cout << ov << std::endl;
-
-  std::vector<int> values = {5, 2, 7, 3, 6, 9, 1, 4, 10};
-  for (auto&& v : values) {
-    ov += v;
-    std::cout << ov << std::endl;
-  }
-  */
-
   typedef kNN<5> Kernel;
   typedef typename Kernel::source_type source_type;
   typedef typename Kernel::charge_type charge_type;
@@ -87,6 +83,8 @@ int main() {
   typedef typename Kernel::result_type result_type;
 
   Kernel K;
+
+  std::cout << sizeof(result_type) << std::endl;
 
   int N = 1000;
   int M = 1000;
