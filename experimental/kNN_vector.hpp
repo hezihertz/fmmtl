@@ -18,7 +18,7 @@ class fixed_vector {
   typedef std::ptrdiff_t                        difference_type;
 
   fixed_vector()
-      : length(0), buffer() {}
+      : length(0), buffer(nullptr) {}
   explicit fixed_vector(std::size_t N)
       : length(N), buffer(new T[length]) {}
   fixed_vector(const fixed_vector& o)
@@ -36,8 +36,20 @@ class fixed_vector {
     return *this;
   }
 
-  std::size_t size() const { return length; }
+  std::size_t size()     const { return length; }
+  std::size_t capacity() const { return size(); }
   bool empty() const { return false; }
+
+        T& operator[](std::size_t i)       { return data()[i]; }
+  const T& operator[](std::size_t i) const { return data()[i]; }
+
+        T& front()       { return *begin(); }
+  const T& front() const { return *begin(); }
+        T&  back()       { return *(begin()+size()-1); }
+  const T&  back() const { return *(begin()+size()-1); }
+
+        T*  data()       { return buffer.get(); }
+  const T*  data() const { return buffer.get(); }
 
   iterator        begin()       { return data(); }
   const_iterator  begin() const { return data(); }
@@ -52,17 +64,6 @@ class fixed_vector {
   reverse_iterator          rend()       { return {begin()}; }
   const_reverse_iterator    rend() const { return {begin()}; }
   const_reverse_iterator   crend() const { return {begin()}; }
-
-        T& front()       { return *begin(); }
-  const T& front() const { return *begin(); }
-        T&  back()       { return *(begin()+size()-1); }
-  const T&  back() const { return *(begin()+size()-1); }
-
-        T* data()       { return buffer.get(); }
-  const T* data() const { return buffer.get(); }
-
-        T& operator[](std::size_t i)       { return data()[i]; }
-  const T& operator[](std::size_t i) const { return data()[i]; }
 
  private:
   std::size_t length;
@@ -85,22 +86,21 @@ class kNN_vector {
   typedef std::size_t                           size_type;
   typedef std::ptrdiff_t                        difference_type;
 
-  explicit kNN_vector(std::size_t N, Compare c = Compare())
-      : comp(c,N), length(0) {}
-
-  const T& operator[](std::size_t i) const { return data()[i]; }
+  explicit kNN_vector(std::size_t N, const Compare& c = Compare())
+      : length(0), comp(c,N) {}
 
   std::size_t size()     const { return length; }
   std::size_t capacity() const { return comp.data.size(); }
-  //resize?
-
   bool empty() const { return size() == 0; }
   bool full()  const { return size() == capacity(); }
+  // resize?
+
+  const T& operator[](std::size_t i) const { return data()[i]; }
 
   const T& front() const { return *begin(); }
   const T&  back() const { return *(begin()+size()-1); }
 
-  const T* data() const { return comp.data.data(); }
+  const T*  data() const { return comp.data.data(); }
 
   const_iterator  begin() const { return data(); }
   const_iterator cbegin() const { return data(); }
@@ -114,20 +114,23 @@ class kNN_vector {
 
   void pop_back() { if(!empty()) --length; }
 
+  /** Push @a v into the sorted vector
+   * @pre capacity() > 0
+   */
   void push_back(const T& v) {
-    if (size() < capacity())
+    if (!full())
       insert(length++, v);
     else if (comp(v,back()))
-      insert(capacity()-1, v);
+      insert(size()-1, v);
   }
 
  private:
-  // Starting at index i, insert t into its sorted position
+  // Starting at index i, insert v into its sorted position
   // TODO: repurpose for an insert(iterator, value) method?
-  void insert(int i, const T& t) {
-    for ( ; i > 0 && comp(t,comp.data[i-1]); --i)
-      comp.data[i] = comp.data[i-1];
-    comp.data[i] = t;
+  void insert(int i, const T& v) {
+    for ( ; i > 0 && comp(v,comp.data[i-1]); --i)
+      comp.data[i] = std::move(comp.data[i-1]);
+    comp.data[i] = v;
   }
 
   // Empty base class optimization for trivial comparators
@@ -135,6 +138,7 @@ class kNN_vector {
     internal(const Compare& _comp, std::size_t N) : Compare(_comp), data(N) {}
     fixed_vector<T> data;
   };
-  internal comp;
+
   std::size_t length;
+  internal comp;
 };

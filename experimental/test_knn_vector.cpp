@@ -2,8 +2,8 @@
 
 #include "kNN_vector.hpp"
 
-template <typename T>
-std::ostream& operator<<(std::ostream& s, const kNN_vector<T>& v) {
+template <typename T, typename C>
+std::ostream& operator<<(std::ostream& s, const kNN_vector<T,C>& v) {
   s << "(";
   if (v.size() >= 1)
     s << v[0];
@@ -13,7 +13,7 @@ std::ostream& operator<<(std::ostream& s, const kNN_vector<T>& v) {
 }
 
 int main() {
-  kNN_vector<int> kvec(5);
+  kNN_vector<int, std::greater<int>> kvec(5);
 
   std::cout << kvec << std::endl;
 
@@ -23,7 +23,7 @@ int main() {
     std::cout << kvec << std::endl;
   }
 
-  kNN_vector<int> othervec = kvec;
+  auto othervec = kvec;
 
   std::cout << othervec << std::endl;
 
