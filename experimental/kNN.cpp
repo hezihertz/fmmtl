@@ -11,7 +11,6 @@
 #include "fmmtl/tree/TreeData.hpp"
 #include "fmmtl/tree/TreeRange.hpp"
 
-
 template <typename T, std::size_t K, typename Compare = std::less<T> >
 class ordered_vector {
   static_assert(K > 0, "ordered_vector must have K > 0");
