@@ -10,12 +10,14 @@
 #include "fmmtl/meta/kernel_traits.hpp"
 
 /** Default behavior gives a warning -- using non-existent method */
-template <bool has_p2l>
+template <bool has_s2l>
 struct S2L_Helper {
-  inline static void apply(...) {
+  template <typename... Args>
+  inline static void apply(Args&&...) {
     std::cerr << "WARNING: Expansion does not have a correct S2L!\n";
   }
-  inline static void eval(...) {
+  template <typename... Args>
+  inline static void eval(Args&&...) {
     apply();
   }
 };
@@ -73,7 +75,7 @@ struct S2L_Helper<true> {
 };
 
 /** Public S2L dispatcher */
-class S2L {
+struct S2L {
   /** Forward to S2L_Helper::apply */
   template <typename Expansion>
   inline static void apply(const Expansion& K,
