@@ -69,8 +69,10 @@ class ordered_vector {
   bool operator==(const ordered_vector& v) {
     return std::equal(begin(), end(), v.begin());
   }
-};
+};  // end ordered_vector
 
+
+/** Print an ordered_vector to an ourput stream */
 template <class T, std::size_t K, class C>
 std::ostream& operator<<(std::ostream& s, const ordered_vector<T,K,C>& ov) {
   s << "(";
@@ -87,8 +89,8 @@ std::ostream& operator<<(std::ostream& s, const ordered_vector<T,K,C>& ov) {
 /** kNN Kernel implementing
  * r_i += K(t_i, s_j) c_j
  * where K(t_i, s_j) = ||t_i - s_j||^2
- * r_i is a sorted vector of the K smallest values seen
- * and c_j = 1 (or perhaps the original index and multiplication becomes append)
+ * r_i is a sorted vector of the K smallest distance-idx pairs seen
+ * and c_j = j
  */
 template <std::size_t K>
 struct kNN {
@@ -109,6 +111,10 @@ struct kNN {
       return s << "(" << dip.distance_sq << ", " << dip.index << ")";
     }
   };
+  /** A kernel_value_type is the result of ||t_i - s_j||, a double.
+   * Multiplication with a charge (unsigned),
+   * is a concatenation into dist_idx_pair
+   */
   struct kernel_value_type {
     double distance_sq;
     dist_idx_pair operator*(const charge_type& c) const {
@@ -127,9 +133,20 @@ struct kNN {
 
 
 
-/**
- * Traverse the binary tree while discarding regions of space
- * with hypersphere-hyperrectange intersections.
+/** Traverse a tree
+ * concept Box {
+ *   bool is_leaf() const;
+ * }
+ * const Prune {
+ *   bool operator()(Box);
+ * }
+ * const Base {
+ *   void operator()(Box);
+ * }
+ * const Visit {
+ *   BoxRange operator()(Box);
+ * }
+ * TODO: Combine into Rules closure?
  */
 template <typename Box, typename Prune, typename Base, typename Visit>
 void traverse(const Box& b,
@@ -156,12 +173,11 @@ struct ChildRange {
 
 
 
-
-
 int main(int argc, char** argv) {
   int N = 1000;
   int M = 1000;
   bool checkErrors = true;
+  Clock timer;
 
   // Parse custom command line args
   for (int i = 1; i < argc; ++i) {
@@ -204,12 +220,16 @@ int main(int argc, char** argv) {
   // Charges are the indices of the original sources
   std::iota(charges.begin(), charges.end(), 0);
 
+  timer.start();
   // Construct the source tree
   SourceTree source_tree(sources);
 
   // Permute the sources and charges to the source_tree
   auto p_sources = make_body_binding(source_tree, sources);
   auto p_charges = make_body_binding(source_tree, charges);
+
+  double construct_time = timer.seconds();
+  std::cout << "Construct: " << construct_time << std::endl;
 
   //
   // Rules -- kNN Single-Tree
@@ -228,6 +248,7 @@ int main(int argc, char** argv) {
   //
   // Traversal -- Single Tree
   //
+  timer.start();
 
   // For each target
   for (unsigned k = 0; k < targets.size(); ++k) {
@@ -265,6 +286,8 @@ int main(int argc, char** argv) {
     traverse(source_tree.root(), prune, base, visit);
   }
 
+  double traverse_time = timer.seconds();
+  std::cout << "Traverse: " << traverse_time << std::endl;
 
   //
   // Complete
@@ -277,7 +300,10 @@ int main(int argc, char** argv) {
     std::vector<result_type> exact(M);
 
     // Compute the result with a direct matrix-vector multiplication
+    timer.start();
     fmmtl::direct(K, sources, charges, targets, exact);
+    double direct_time = timer.seconds();
+    std::cout << "Direct: " << direct_time << std::endl;
 
     int wrong_results = 0;
     for (unsigned k = 0; k < results.size(); ++k) {
