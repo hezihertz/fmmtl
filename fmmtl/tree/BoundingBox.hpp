@@ -223,4 +223,19 @@ BoundingBox<P,D> operator&(BoundingBox<P,D> b1,
   return b1 &= b2;
 }
 
+/** Compute minimum box-to-point squared distance
+ */
+template <typename P, unsigned D>
+double norm_2_sq(const BoundingBox<P,D>& bb, const P& p) {
+  double result = 0;    // XXX: double
+  for (unsigned i = 0; i < D; ++i) {
+    auto low = bb.min()[i] - p[i];
+    low = low < 0 ? 0 : low;
+    auto hi  = p[i] - bb.max()[i];
+    hi = hi < 0 ? 0 : hi;
+    result += (low + hi) * (low + hi);
+  }
+  return result;
+}
+
 } // end namespace fmmtl

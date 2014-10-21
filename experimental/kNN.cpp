@@ -50,6 +50,10 @@ class ordered_vector {
     return int_.data_.begin() + int_.size_;
   }
 
+  const T& back() const {
+    return int_.data_[int_.size_-1];
+  }
+
   ordered_vector& operator+=(const T& v) {
     if (int_.size_ < K)
       insert(int_.size_++, v);
@@ -203,33 +207,39 @@ int main(int argc, char** argv) {
   // Construct the source tree
   SourceTree source_tree(sources);
 
-
-  // Hyperrectangular distance struct
-  struct hyper_rect_distance {
-    //double hyperrect_distance;
-    //double farthest_distance;   // XXX: result[k].back()?
-    //Vec<D,double> axis;
-  };
-
-  // Associate each box of the source tree with a hyperrectangular distance
-  auto h_rect = make_box_binding<hyper_rect_distance>(source_tree);
-  // Permute the sources and charges
+  // Permute the sources and charges to the source_tree
   auto p_sources = make_body_binding(source_tree, sources);
   auto p_charges = make_body_binding(source_tree, charges);
 
   //
-  // Traversal -- Single-Tree
+  // Rules -- kNN Single-Tree
+  //
+
+  // Associate each box of the source tree with a hyperrectangular distance
+  auto hyper_rect = make_box_binding<double>(source_tree);
+
+  // Precompute the bounding box of each box
+  using bounding_box_type = fmmtl::BoundingBox<typename SourceTree::point_type>;
+  auto box_bb = make_box_binding<bounding_box_type>(source_tree);
+  for (source_box_type b : boxes(source_tree))
+    box_bb[b] = bounding_box_type(b.center() - b.extents()/2,
+                                  b.center() + b.extents()/2);
+
+  //
+  // Traversal -- Single Tree
   //
 
   // For each target
   for (unsigned k = 0; k < targets.size(); ++k) {
+    // Get the target and result
     target_type& t = targets[k];
     result_type& r = results[k];
 
-    // Construct a rule for this target
-    auto prune = [&](const source_box_type&) {
-      return false;
-    };
+    // Reset the hyper_rect distances
+    std::fill(hyper_rect.begin(), hyper_rect.end(), 0);
+    double max_distance_sq = 1e200;
+
+    // Define the rules of the traversal
     auto base = [&](const source_box_type& b) {
       // For all the sources/charges of this box
       auto ci = p_charges[b.body_begin()];
@@ -237,11 +247,21 @@ int main(int argc, char** argv) {
         r += K(t,s) * (*ci);
         ++ci;
       }
+      max_distance_sq = r.back().distance_sq;
+    };
+    auto prune = [&](const source_box_type& b) {
+      return hyper_rect[b] >= max_distance_sq;
     };
     auto visit = [&](const source_box_type& b) {
+      // For each child, update distance in hyper_rect and store
+      for (source_box_type c : children(b)) {
+        hyper_rect[c] = norm_2_sq(box_bb[c], t);
+      }
+      // Should return them in order of the hyper_rect value, but...
       return ChildRange<source_box_type>{b};
     };
 
+    // Traverse the source tree
     traverse(source_tree.root(), prune, base, visit);
   }
 
