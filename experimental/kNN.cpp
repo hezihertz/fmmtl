@@ -1,10 +1,10 @@
 #include <iostream>
 #include <vector>
+#include <array>
 #include <functional>
 #include <algorithm>
 #include <stack>
 
-#include "fmmtl/Kernel.hpp" //Ugh
 #include "fmmtl/Direct.hpp"
 #include "fmmtl/numeric/random.hpp"
 #include "fmmtl/tree/NDTree.hpp"
@@ -17,53 +17,67 @@ class ordered_vector {
 
   // Empty base class optimization for trivial comparators
   struct internal : public Compare {
-    internal(const Compare& _comp) : Compare(_comp) {}
-    T data[K];
+    internal(const Compare& comp, unsigned size)
+        : Compare(comp), size_(size) {}
+    unsigned size_;
+    std::array<T,K> data_;
   };
+  internal int_;
 
-  internal comp;
-  unsigned size;
 
-  void insert(int i, const T& t) {
-    for ( ; i > 0 && comp(t,comp.data[i-1]); --i)
-      comp.data[i] = comp.data[i-1];
-    comp.data[i] = t;
+  void insert(int i, const T& v) {
+    for ( ; i > 0 && int_(v,int_.data_[i-1]); --i)
+      int_.data_[i] = int_.data_[i-1];
+    int_.data_[i] = v;
   }
 
  public:
+  using value_type = T;
+  using const_iterator = typename std::array<T,K>::const_iterator;
+
   // Default construction
-  ordered_vector(const Compare& _comp = Compare())
-      : comp(_comp), size(0) {
+  ordered_vector(const Compare& comp = Compare())
+      : int_(comp, 0) {
   }
 
-  ordered_vector& operator+=(const T& t) {
-    if (size < K)
-      insert(size++, t);
-    else if (comp(t,comp.data[K-1]))
-      insert(K-1, t);
+  const value_type& operator[](unsigned i) const {
+    return int_.data_[i];
+  }
+  const_iterator begin() const {
+    return int_.data_.begin();
+  }
+  const_iterator end() const {
+    return int_.data_.begin() + int_.size_;
+  }
+
+  ordered_vector& operator+=(const T& v) {
+    if (int_.size_ < K)
+      insert(int_.size_++, v);
+    else if (int_(v,int_.data_[K-1]))
+      insert(K-1, v);
     return *this;
   }
 
   operator std::vector<T>() const {
-    return std::vector<T>(comp.data, comp.data + K);
+    return std::vector<T>(begin(), end());
   }
 
   bool operator==(const ordered_vector& v) {
-    return std::equal(comp.data, comp.data+K, v.comp.data);
-  }
-  bool operator!=(const ordered_vector& v) {
-    return !(*this == v);
-  }
-
-  friend std::ostream& operator<<(std::ostream& s, const ordered_vector& ov) {
-    s << "(";
-    if (ov.size >= 1)
-      s << ov.comp.data[0];
-    for (unsigned i = 1; i < ov.size; ++i)
-      s << ", " << ov.comp.data[i];
-    return s << ")";
+    return std::equal(begin(), end(), v.begin());
   }
 };
+
+template <class T, std::size_t K, class C>
+std::ostream& operator<<(std::ostream& s, const ordered_vector<T,K,C>& ov) {
+  s << "(";
+  auto first = ov.begin();
+  auto last = ov.end();
+  if (first < last)
+    s << *first;
+  for (++first; first < last; ++first)
+    s << ", " << *first;
+  return s << ")";
+}
 
 
 /** kNN Kernel implementing
@@ -73,19 +87,69 @@ class ordered_vector {
  * and c_j = 1 (or perhaps the original index and multiplication becomes append)
  */
 template <std::size_t K>
-struct kNN : public fmmtl::Kernel<kNN<K> >{
+struct kNN {
   typedef Vec<1,double> source_type;
   typedef Vec<1,double> target_type;
-  typedef int    charge_type;
+  typedef unsigned      charge_type;
 
-  typedef double kernel_value_type;
-  typedef ordered_vector<double,K> result_type;
+  struct dist_idx_pair {
+    double distance_sq;
+    unsigned index;
+    bool operator<(const dist_idx_pair& other) const {
+      return distance_sq < other.distance_sq;
+    }
+    bool operator==(const dist_idx_pair& other) const {
+      return distance_sq == other.distance_sq && index == other.index;
+    }
+    friend std::ostream& operator<<(std::ostream& s, const dist_idx_pair& dip) {
+      return s << "(" << dip.distance_sq << ", " << dip.index << ")";
+    }
+  };
+  struct kernel_value_type {
+    double distance_sq;
+    dist_idx_pair operator*(const charge_type& c) const {
+      return {distance_sq, c};
+    }
+  };
+
+  typedef ordered_vector<dist_idx_pair,K> result_type;
 
   kernel_value_type operator()(const target_type& t,
                                const source_type& s) const {
-    return norm_2_sq(t-s);
+    return {norm_2_sq(t-s)};
   }
 };
+
+
+
+
+/**
+ * Traverse the binary tree while discarding regions of space
+ * with hypersphere-hyperrectange intersections.
+ */
+template <typename Box, typename Prune, typename Base, typename Visit>
+void traverse(const Box& b,
+              Prune& prune, Base& base_case, Visit& visit_order) {
+  if (prune(b))
+    return;
+
+  if (b.is_leaf()) {
+    base_case(b);
+  } else {
+    for (const Box& child : visit_order(b))
+      traverse(child, prune, base_case, visit_order);
+  }
+}
+
+
+// Quicky typemap from Box child range to Box range
+template <typename Box>
+struct ChildRange {
+  const Box& b;
+  auto begin() -> decltype(b.child_begin()) { return b.child_begin(); }
+  auto end()   -> decltype(b.child_end())   { return b.child_end();   }
+};
+
 
 
 
@@ -106,47 +170,52 @@ int main(int argc, char** argv) {
     }
   }
 
-  typedef kNN<5> Kernel;
-  typedef typename Kernel::source_type source_type;
-  typedef typename Kernel::charge_type charge_type;
-  typedef typename Kernel::target_type target_type;
-  typedef typename Kernel::result_type result_type;
+  // Define the kernel types
+  using Kernel = kNN<5>;
+  using source_type = typename Kernel::source_type;
+  using charge_type = typename Kernel::charge_type;
+  using target_type = typename Kernel::target_type;
+  using result_type = typename Kernel::result_type;
 
+  // Define the tree types
+  constexpr unsigned DS = fmmtl::dimension<source_type>::value;
+  constexpr unsigned DT = fmmtl::dimension<target_type>::value;
+  using SourceTree = fmmtl::NDTree<DS>;
+  using TargetTree = fmmtl::NDTree<DT>;
+  using source_box_type  = typename SourceTree::box_type;
+  using source_body_type = typename SourceTree::body_type;
+  using target_box_type  = typename TargetTree::box_type;
+  using target_body_type = typename TargetTree::body_type;
+
+  // Construct the kernel
   Kernel K;
 
-  std::vector<source_type> sources(M);
-  for (auto&& s : sources)
-    s = fmmtl::random<source_type>::get();
-
-  // TODO: Implicit values
+  // Construct the kernel data
+  std::vector<source_type> sources = fmmtl::random_n(M);
   std::vector<charge_type> charges(M);
-  for (auto&& c : charges)
-    c = 1;
 
-  std::vector<target_type> targets(N);
-  for (auto&& t : targets)
-    t = fmmtl::random<target_type>::get();
-
+  std::vector<target_type> targets = fmmtl::random_n(N);
   std::vector<result_type> results(N);
 
-  // Construct the source tree
-  constexpr unsigned D = fmmtl::dimension<source_type>::value;
-  fmmtl::NDTree<D> source_tree(sources);
+  // Charges are the indices of the original sources
+  std::iota(charges.begin(), charges.end(), 0);
 
-  typedef fmmtl::NDTree<D>::box_type  source_box_type;
-  typedef fmmtl::NDTree<D>::body_type source_body_type;
+  // Construct the source tree
+  SourceTree source_tree(sources);
+
 
   // Hyperrectangular distance struct
   struct hyper_rect_distance {
-    double hyperrect_distance;
-    double farthest_distance;   // XXX: result[k].back()?
-    Vec<D,double> axis;
+    //double hyperrect_distance;
+    //double farthest_distance;   // XXX: result[k].back()?
+    //Vec<D,double> axis;
   };
 
   // Associate each box of the source tree with a hyperrectangular distance
   auto h_rect = make_box_binding<hyper_rect_distance>(source_tree);
-  auto p_sources = make_body_binding(sources, source_tree);
-  auto p_charges = make_body_binding(charges, source_tree);
+  // Permute the sources and charges
+  auto p_sources = make_body_binding(source_tree, sources);
+  auto p_charges = make_body_binding(source_tree, charges);
 
   //
   // Traversal -- Single-Tree
@@ -154,38 +223,26 @@ int main(int argc, char** argv) {
 
   // For each target
   for (unsigned k = 0; k < targets.size(); ++k) {
+    target_type& t = targets[k];
+    result_type& r = results[k];
 
-    // Start from the root of the source tree
-    std::stack<source_box_type> stack;
-    stack.push(source_tree.root());
-
-    while (!stack.empty()) {
-      source_box_type sbox = stack.top();
-      stack.pop();
-
-      // If leaf, compute direct evaluation
-      if (sbox.is_leaf()) {
-        // TODO: Cleanup with fmmtl::direct rewrite (range/scalar comprehension)
-        auto source_range = p_sources[sbox];
-        auto charge_range = p_charges[sbox];
-        Direct::matvec(K,
-                       source_range.first, source_range.second,  // Source range
-                       charge_range.first,                       // Source charge
-                       targets.begin()+k, targets.begin()+k+1,   // Target range
-                       results.begin()+k);                       // Target result
-      } else {
-        // Update intersection data h_rect[sbox]
-        auto& box_data = h_rect[sbox];
-        source_box_type pbox = sbox.parent();
-        // box_data.hyperrect_distance = ...
-
-        // Attempt to prune this box based on the computed data
-
-        // Sort the children in the order we would like them traversed
-
-        // Add children (in reserve order) to the stack for traversal
+    // Construct a rule for this target
+    auto prune = [&](const source_box_type&) {
+      return false;
+    };
+    auto base = [&](const source_box_type& b) {
+      // For all the sources/charges of this box
+      auto ci = p_charges[b.body_begin()];
+      for (source_type& s : p_sources[b]) {
+        r += K(t,s) * (*ci);
+        ++ci;
       }
-    }
+    };
+    auto visit = [&](const source_box_type& b) {
+      return ChildRange<source_box_type>{b};
+    };
+
+    traverse(source_tree.root(), prune, base, visit);
   }
 
 
@@ -200,11 +257,11 @@ int main(int argc, char** argv) {
     std::vector<result_type> exact(M);
 
     // Compute the result with a direct matrix-vector multiplication
-    Direct::matvec(K, sources, charges, targets, exact);
+    fmmtl::direct(K, sources, charges, targets, exact);
 
     int wrong_results = 0;
     for (unsigned k = 0; k < results.size(); ++k) {
-      if (exact[k] != results[k]) {
+      if (!(exact[k] == results[k])) {
         std::cout << "[" << std::setw(log10(M)+1) << k << "]"
                   << " Exact: " << exact[k]
                   << ", Tree: " << results[k] << std::endl;
