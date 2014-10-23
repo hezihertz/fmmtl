@@ -7,7 +7,7 @@
 
 #include "fmmtl/Direct.hpp"
 #include "fmmtl/numeric/random.hpp"
-#include "fmmtl/tree/NDTree.hpp"
+#include "fmmtl/tree/KDTree.hpp"
 #include "fmmtl/tree/TreeData.hpp"
 #include "fmmtl/tree/TreeRange.hpp"
 
@@ -94,8 +94,8 @@ std::ostream& operator<<(std::ostream& s, const ordered_vector<T,K,C>& ov) {
  */
 template <std::size_t K>
 struct kNN {
-  typedef Vec<1,double> source_type;
-  typedef Vec<1,double> target_type;
+  typedef Vec<3,double> source_type;
+  typedef Vec<3,double> target_type;
   typedef unsigned      charge_type;
 
   struct dist_idx_pair {
@@ -200,8 +200,8 @@ int main(int argc, char** argv) {
   // Define the tree types
   constexpr unsigned DS = fmmtl::dimension<source_type>::value;
   constexpr unsigned DT = fmmtl::dimension<target_type>::value;
-  using SourceTree = fmmtl::NDTree<DS>;
-  using TargetTree = fmmtl::NDTree<DT>;
+  using SourceTree = fmmtl::KDTree<DS>;
+  using TargetTree = fmmtl::KDTree<DT>;
   using source_box_type  = typename SourceTree::box_type;
   using source_body_type = typename SourceTree::body_type;
   using target_box_type  = typename TargetTree::box_type;
@@ -274,12 +274,19 @@ int main(int argc, char** argv) {
       return hyper_rect[b] >= max_distance_sq;
     };
     auto visit = [&](const source_box_type& b) {
-      // For each child, update distance in hyper_rect and store
-      for (source_box_type c : children(b)) {
-        hyper_rect[c] = norm_2_sq(box_bb[c], t);
+      // Make sure this is a binary tree
+      static_assert(b.num_children() == 2, "Binary Tree Only For Now");
+
+      source_box_type c_left = *(b.child_begin());
+      double left  = hyper_rect[c_left] = norm_2_sq(box_bb[c_left], t);
+      source_box_type c_right = *(b.child_begin()+1);
+      double right = hyper_rect[c_right] = norm_2_sq(box_bb[c_right], t);
+
+      if (left < right) {
+        return std::array<source_box_type,2>{c_left, c_right};
+      } else {
+        return std::array<source_box_type,2>{c_right, c_left};
       }
-      // Should return them in order of the hyper_rect value, but...
-      return ChildRange<source_box_type>{b};
     };
 
     // Traverse the source tree

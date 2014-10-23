@@ -148,7 +148,7 @@ class KDTree {
       return box_iterator(2*idx_+3, tree_);
     }
     //! The number of children this box has
-    constexpr size_type num_children() const {
+    constexpr static size_type num_children() {
       return 2;
     }
 
@@ -489,7 +489,7 @@ class KDTree {
     }
 
     // Assert no re-allocation
-    std::cout << box_data_.size() << "\t" << 2*leaves-1 << std::endl;
+    //std::cout << box_data_.size() << "\t" << 2*leaves-1 << std::endl;
     assert(box_data_.size() <= 2*leaves-1);
 
     // Extract the permutation idx

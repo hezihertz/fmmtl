@@ -74,7 +74,7 @@ LDLIBS  +=
 ######################
 
 ifeq ($(NDEBUG),1)
-	CXXFLAGS += -DFMMTL_NDEBUG
+	CXXFLAGS += -DFMMTL_NDEBUG -DNDEBUG
 endif
 ifeq ($(DEBUG),1)
 	CXXFLAGS += -DFMMTL_DEBUG -g -fno-inline

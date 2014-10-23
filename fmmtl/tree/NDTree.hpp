@@ -287,9 +287,6 @@ class NDTree {
     //! Construct an invalid BoxIterator
     inline BoxIterator() {}
     //! The index of this box iterator
-    inline size_type index() const {
-      return dereference().index();
-    }
     inline unsigned index() const {
       return this->base_reference();
     }
@@ -322,9 +319,6 @@ class NDTree {
     //! Construct an invalid BodyIterator
     inline BodyIterator() {}
     //! The index of this body iterator
-    inline size_type index() const {
-      return this->base_reference();
-    }
     inline unsigned index() const {
       return this->base_reference();
     }
