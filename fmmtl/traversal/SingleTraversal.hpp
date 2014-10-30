@@ -46,7 +46,7 @@ template <typename Box,
 void traverse(const Box& b,
               Prune& prune,
               Base& base_case,
-              Visit& visit_order = Visit()) {
+              Visit&& visit_order = Visit()) {
   if (prune(b))
     return;
 
@@ -54,7 +54,7 @@ void traverse(const Box& b,
     base_case(b);
   } else {
     for (const Box& child : visit_order(b))
-      traverse(child, prune, base_case, visit_order);
+      traverse(child, prune, base_case, std::forward<Visit>(visit_order));
   }
 }
 
