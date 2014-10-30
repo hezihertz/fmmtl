@@ -9,7 +9,8 @@
 #include "fmmtl/numeric/random.hpp"
 #include "fmmtl/tree/KDTree.hpp"
 #include "fmmtl/tree/TreeData.hpp"
-#include "fmmtl/tree/TreeRange.hpp"
+
+#include "fmmtl/traversal/SingleTraversal.hpp"
 
 template <typename T, std::size_t K, typename Compare = std::less<T> >
 class ordered_vector {
@@ -132,47 +133,6 @@ struct kNN {
 
 
 
-
-/** Traverse a tree
- * concept Box {
- *   bool is_leaf() const;
- * }
- * const Prune {
- *   bool operator()(Box);
- * }
- * const Base {
- *   void operator()(Box);
- * }
- * const Visit {
- *   BoxRange operator()(Box);
- * }
- * TODO: Combine into Rules closure?
- */
-template <typename Box, typename Prune, typename Base, typename Visit>
-void traverse(const Box& b,
-              Prune& prune, Base& base_case, Visit& visit_order) {
-  if (prune(b))
-    return;
-
-  if (b.is_leaf()) {
-    base_case(b);
-  } else {
-    for (const Box& child : visit_order(b))
-      traverse(child, prune, base_case, visit_order);
-  }
-}
-
-
-// Quicky typemap from Box child range to Box range
-template <typename Box>
-struct ChildRange {
-  const Box& b;
-  auto begin() -> decltype(b.child_begin()) { return b.child_begin(); }
-  auto end()   -> decltype(b.child_end())   { return b.child_end();   }
-};
-
-
-
 int main(int argc, char** argv) {
   int N = 1000;
   int M = 1000;
@@ -290,7 +250,7 @@ int main(int argc, char** argv) {
     };
 
     // Traverse the source tree
-    traverse(source_tree.root(), prune, base, visit);
+    fmmtl::traverse(source_tree.root(), prune, base, visit);
   }
 
   double traverse_time = timer.seconds();
